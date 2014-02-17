@@ -1,5 +1,5 @@
 /*
-    Copyright 2005-2013 Intel Corporation.  All Rights Reserved.
+    Copyright 2005-2014 Intel Corporation.  All Rights Reserved.
 
     This file is part of Threading Building Blocks.
 
@@ -151,15 +151,15 @@
     #define __TBB_CONSTEXPR_PRESENT                   (__GXX_EXPERIMENTAL_CXX0X__ && __TBB_GCC_VERSION >= 40400)
     #define __TBB_DEFAULTED_AND_DELETED_FUNC_PRESENT  (__GXX_EXPERIMENTAL_CXX0X__ && __TBB_GCC_VERSION >= 40400)
 #elif _MSC_VER
-    #define __TBB_CPP11_VARIADIC_TEMPLATES_PRESENT    0
+    #define __TBB_CPP11_VARIADIC_TEMPLATES_PRESENT    (_MSC_VER >= 1800)
     #define __TBB_CPP11_RVALUE_REF_PRESENT            (_MSC_VER >= 1600)
     #define __TBB_EXCEPTION_PTR_PRESENT               (_MSC_VER >= 1600)
     #define __TBB_STATIC_ASSERT_PRESENT               (_MSC_VER >= 1600)
     #define __TBB_MAKE_EXCEPTION_PTR_PRESENT          (_MSC_VER >= 1700)
     #define __TBB_CPP11_TUPLE_PRESENT                 (_MSC_VER >= 1600)
-    #define __TBB_INITIALIZER_LISTS_PRESENT           0
+    #define __TBB_INITIALIZER_LISTS_PRESENT           (_MSC_VER >= 1800)
     #define __TBB_CONSTEXPR_PRESENT                   0
-    #define __TBB_DEFAULTED_AND_DELETED_FUNC_PRESENT  0
+    #define __TBB_DEFAULTED_AND_DELETED_FUNC_PRESENT  (_MSC_VER >= 1800)
 #else
     #define __TBB_CPP11_VARIADIC_TEMPLATES_PRESENT    0
     #define __TBB_CPP11_RVALUE_REF_PRESENT            0
@@ -203,6 +203,12 @@
     #define __TBB_ICC_BUILTIN_ATOMICS_PRESENT 1
 #endif
 
+#if __MIC__ || __MIC2__
+#define __TBB_DEFINE_MIC 1
+#endif
+
+#define __TBB_TSX_INTRINSICS_PRESENT ( (__TBB_GCC_VERSION>=40800) || (_MSC_VER>=1700) || (__INTEL_COMPILER>=1300) ) && !__TBB_DEFINE_MIC
+
 /** User controlled TBB features & modes **/
 
 #ifndef TBB_USE_DEBUG
@@ -240,10 +246,6 @@
 #define TBB_USE_PERFORMANCE_WARNINGS TBB_USE_DEBUG
 #endif /* TBB_PEFORMANCE_WARNINGS */
 #endif /* TBB_USE_PERFORMANCE_WARNINGS */
-
-#if __MIC__ || __MIC2__
-#define __TBB_DEFINE_MIC 1
-#endif
 
 #if !defined(__EXCEPTIONS) && !defined(_CPPUNWIND) && !defined(__SUNPRO_CC) || defined(_XBOX)
     #if TBB_USE_EXCEPTIONS
@@ -343,6 +345,11 @@
     #define TBB_PREVIEW_LOCAL_OBSERVER 1
 #endif /* TBB_PREVIEW_LOCAL_OBSERVER */
 
+
+#ifndef __TBB_ITT_STRUCTURE_API
+#define __TBB_ITT_STRUCTURE_API ( !__TBB_DEFINE_MIC && (__TBB_CPF_BUILD || TBB_PREVIEW_FLOW_GRAPH_TRACE) )
+#endif
+
 #if TBB_USE_EXCEPTIONS && !__TBB_TASK_GROUP_CONTEXT
     #error TBB_USE_EXCEPTIONS requires __TBB_TASK_GROUP_CONTEXT to be enabled
 #endif
@@ -384,6 +391,11 @@
 #endif
 #endif
 
+#if !defined(TBB_PREVIEW_SPECULATIVE_SPIN_RW_MUTEX)
+    #define TBB_PREVIEW_SPECULATIVE_SPIN_RW_MUTEX __TBB_CPF_BUILD
+#endif /* TBB_PREVIEW_SPECULATIVE_SPIN_RW_MUTEX */
+
+
 /** __TBB_WIN8UI_SUPPORT enables support of New Windows*8 Store Apps and limit a possibility to load
     shared libraries at run time only from application container **/
 #if defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_APP
@@ -416,6 +428,8 @@
 #   endif
 #endif
 
+#define __TBB_TSX_AVAILABLE  (__TBB_x86_32 || __TBB_x86_64) && !__TBB_DEFINE_MIC
+
 /** Macros of the form __TBB_XXX_BROKEN denote known issues that are caused by
     the bugs in compilers, standard or OS specific libraries. They should be
     removed as soon as the corresponding bugs are fixed or the buggy OS/compiler
@@ -426,6 +440,11 @@
     /** Necessary because on Android 8-byte CAS and F&A are not available for some processor architectures,
         but no mandatory warning message appears from GCC 4.4.3. Instead, only a linkage error occurs when
         these atomic operations are used (such as in unit test test_atomic.exe). **/
+    #define __TBB_GCC_64BIT_ATOMIC_BUILTINS_BROKEN 1
+#elif __TBB_x86_32 && __TBB_GCC_VERSION == 40102 && ! __GNUC_RH_RELEASE__
+    /** GCC 4.1.2 erroneously emit call to external function for 64 bit sync_ intrinsics.
+        However these functions are not defined anywhere. It seems that this problem was fixed later on
+        and RHEL got an updated version of gcc 4.1.2. **/
     #define __TBB_GCC_64BIT_ATOMIC_BUILTINS_BROKEN 1
 #endif
 
@@ -527,6 +546,11 @@
     #define __TBB_LIBSTDCPP_EXCEPTION_HEADERS_BROKEN 0
 #endif
 
+/*In a PIC mode some versions of GCC 4.1.2 generate incorrect inlined code for 8 byte __sync_val_compare_and_swap intrinisc */
+#if __TBB_GCC_VERSION == 40102 && __PIC__ && !defined(__INTEL_COMPILER) && !defined(__clang__)
+    #define __TBB_GCC_CAS8_BUILTIN_INLINING_BROKEN 1
+#endif
+
 #if __TBB_x86_32 && (__linux__ || __APPLE__ || _WIN32 || __sun) &&  ((defined(__INTEL_COMPILER) && __INTEL_COMPILER <= 1400) || (__GNUC__==3 && __GNUC_MINOR__==3 ) || defined(__SUNPRO_CC))
     // Some compilers for IA-32 fail to provide 8-byte alignment of objects on the stack,
     // even if the object specifies 8-byte alignment.  On such platforms, the IA-32 implementation
@@ -549,4 +573,5 @@
 
 #define __TBB_ATOMIC_CTORS     (__TBB_CONSTEXPR_PRESENT && __TBB_DEFAULTED_AND_DELETED_FUNC_PRESENT && (!__TBB_ZERO_INIT_WITH_DEFAULTED_CTOR_BROKEN))
 
+#define __TBB_ALLOCATOR_CONSTRUCT_VARIADIC      (__TBB_CPP11_VARIADIC_TEMPLATES_PRESENT && __TBB_CPP11_RVALUE_REF_PRESENT)
 #endif /* __TBB_tbb_config_H */

@@ -1,5 +1,5 @@
 /*
-    Copyright 2005-2013 Intel Corporation.  All Rights Reserved.
+    Copyright 2005-2014 Intel Corporation.  All Rights Reserved.
 
     This file is part of Threading Building Blocks.
 
@@ -518,7 +518,7 @@ int TestMain () {
     REPORT("Known issue: exception handling tests are skipped.\n");
 #endif
 #if (HAVE_m128 || HAVE_m256) && __TBB_SSE_STACK_ALIGNMENT_BROKEN
-    REPORT("Known issue: stack alignment for SSE/AVX not tested.\n");
+    REPORT("Known issue: stack alignment for SIMD instructions not tested.\n");
 #endif
     return Harness::Done;
 }

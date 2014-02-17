@@ -1,5 +1,5 @@
 /*
-    Copyright 2005-2013 Intel Corporation.  All Rights Reserved.
+    Copyright 2005-2014 Intel Corporation.  All Rights Reserved.
 
     This file is part of Threading Building Blocks.
 
@@ -265,6 +265,10 @@ inline void run_initializer( bool (*f)(), atomic<do_once_state>& state ) {
         void protect_affinity_mask() {}
     };
 #endif /* __TBB_OS_AFFINITY_SYSCALL_PRESENT */
+
+#if __TBB_CPF_BUILD || TBB_PREVIEW_SPECULATIVE_SPIN_RW_MUTEX
+extern bool cpu_has_speculation();
+#endif
 
 } // namespace internal
 } // namespace tbb

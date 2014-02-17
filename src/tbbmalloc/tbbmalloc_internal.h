@@ -1,5 +1,5 @@
 /*
-    Copyright 2005-2013 Intel Corporation.  All Rights Reserved.
+    Copyright 2005-2014 Intel Corporation.  All Rights Reserved.
 
     This file is part of Threading Building Blocks.
 
@@ -43,7 +43,7 @@
     #error Must define USE_PTHREAD or USE_WINTHREAD
 #endif
 
-#include "tbb/tbb_config.h"
+#include "tbb/tbb_config.h" // for __TBB_LIBSTDCPP_EXCEPTION_HEADERS_BROKEN
 #if __TBB_LIBSTDCPP_EXCEPTION_HEADERS_BROKEN
   #define _EXCEPTION_PTR_H /* prevents exception_ptr.h inclusion */
   #define _GLIBCXX_NESTED_EXCEPTION_H /* prevents nested_exception.h inclusion */
@@ -58,10 +58,6 @@
 #endif
 #include "tbb/scalable_allocator.h"
 #include "tbbmalloc_internal_api.h"
-
-#if __sun || __SUNPRO_CC
-#define __asm__ asm
-#endif
 
 /********* Various compile-time options        **************/
 
@@ -160,6 +156,20 @@ public:
     void setThreadMallocTLS( TLSData * newvalue );
     TLSData* createTLS(MemoryPool *memPool, Backend *backend);
 };
+
+template<typename Arg, typename Compare>
+inline void AtomicUpdate(Arg &location, Arg newVal, const Compare &cmp)
+{
+    MALLOC_STATIC_ASSERT(sizeof(Arg) == sizeof(intptr_t),
+                         "Type of argument must match AtomicCompareExchange type.");
+    for (Arg old = location; cmp(old, newVal); ) {
+        Arg val = AtomicCompareExchange((intptr_t&)location, (intptr_t)newVal, old);
+        if (val == old)
+            break;
+        // TODO: do we need backoff after unsuccessful CAS?
+        old = val;
+    }
+}
 
 // TODO: make BitMaskBasic more general
 // (currenty, it fits BitMaskMin well, but not as suitable for BitMaskMax)
@@ -384,8 +394,11 @@ private:
     typedef LargeObjectCacheImpl< LargeObjectCacheProps<minLargeSize, maxLargeSize, largeBlockCacheStep, 2, 2, 16> > LargeCacheType;
     typedef LargeObjectCacheImpl< LargeObjectCacheProps<maxLargeSize, maxHugeSize, hugeBlockCacheStep, 1, 1, 4> > HugeCacheType;
 
-    LargeCacheType largeCache;
+    // beginning of largeCache is more actively used and smaller than hugeCache,
+    // so put hugeCache first to prevent false sharing
+    // with LargeObjectCache's predecessor
     HugeCacheType hugeCache;
+    LargeCacheType largeCache;
 
     /* logical time, incremented on each put/get operation
        To prevent starvation between pools, keep separately for each pool.
@@ -516,6 +529,7 @@ public:
 };
 
 class CoalRequestQ { // queue of free blocks that coalescing was delayed
+private:
     FreeBlock *blocksToFree;
 public:
     FreeBlock *getAll(); // return current list of blocks and make queue empty
@@ -593,10 +607,12 @@ public:
         bool empty() const { return !head; }
     };
 
+    typedef BitMaskMin<Backend::freeBinsNum> BitMaskBins;
+
     // array of bins supplemented with bitmask for fast finding of non-empty bins
     class IndexedBins {
-        BitMaskMin<Backend::freeBinsNum> bitMask;
-        Bin                           freeBins[Backend::freeBinsNum];
+        BitMaskBins bitMask;
+        Bin         freeBins[Backend::freeBinsNum];
         FreeBlock *getFromBin(int binIdx, BackendSync *sync, size_t size,
                               bool resSlabAligned, bool alignedBin, bool wait,
                               int *resLocked);
@@ -619,6 +635,21 @@ public:
     };
 
 private:
+    class AdvRegionsBins {
+        BitMaskBins bins;
+    public:
+        void registerBin(int regBin) { bins.set(regBin, 1); }
+        int getMinUsedBin(int start) const { return bins.getMinTrue(start); }
+        void reset() { bins.reset(); }
+    };
+    // auxiliary class to atomic maximum request finding
+    class MaxRequestComparator {
+        const Backend *backend;
+    public:
+        MaxRequestComparator(const Backend *be) : backend(be) {}
+        inline bool operator()(size_t oldMaxReq, size_t requestSize) const;
+    };
+
     ExtMemoryPool *extMemPool;
     // used for release every region on pool destroying
     MemRegion     *regionList;
@@ -636,7 +667,6 @@ private:
     // for workloads when small and large allocation requests are mixed.
     // TODO: decrease, not only increase it
     size_t         maxRequestedSize;
-    void correctMaxRequestSize(size_t requestSize);
 
     FreeBlock *addNewRegion(size_t rawSize, bool exact, bool addToBin);
     FreeBlock *findBlockInRegion(MemRegion *region, size_t exactBlockSize);
@@ -669,10 +699,7 @@ public:
 #if __TBB_MALLOC_BACKEND_STAT
     void reportStat(FILE *f);
 #endif
-    bool bootstrap(ExtMemoryPool *extMemoryPool) {
-        extMemPool = extMemoryPool;
-        return addNewRegion(2*1024*1024, /*exact=*/false, /*addToBin=*/true);
-    }
+    bool bootstrap(ExtMemoryPool *extMemoryPool);
     void reset();
     bool destroy();
     bool clean(); // clean on caches cleanup
@@ -698,6 +725,7 @@ public:
         memSoftLimit = softLimit;
         releaseCachesToLimit();
     }
+    inline size_t getMaxBinnedSize() const;
 
 #if __TBB_MALLOC_WHITEBOX_TEST
     size_t getTotalMemSize() const { return totalMemSize; }
@@ -725,8 +753,9 @@ private:
         return isAligned((char*)block+size, slabSize)
             && size >= slabSize;
     }
-    inline size_t getMaxBinnedSize();
 
+    // register bins related to advance regions
+    AdvRegionsBins advRegBins;
     IndexedBins freeLargeBins,
                 freeAlignedBins;
 };
@@ -742,6 +771,8 @@ public:
 
 struct ExtMemoryPool {
     Backend           backend;
+    LargeObjectCache  loc;
+    AllLocalCaches    allLocalCaches;
 
     intptr_t          poolId;
     // to find all large objects
@@ -755,9 +786,6 @@ struct ExtMemoryPool {
     // TODO: implements fixedPool with calling rawFree on destruction
                       fixedPool;
     TLSKey            tlsPointerKey;  // per-pool TLS key
-
-    LargeObjectCache  loc;
-    AllLocalCaches    allLocalCaches;
 
     bool init(intptr_t poolId, rawAllocType rawAlloc, rawFreeType rawFree,
               size_t granularity, bool keepAllMemory, bool fixedPool);
@@ -777,6 +805,8 @@ struct ExtMemoryPool {
         backend.reset();
     }
     void destroy() {
+        loc.reset();
+        allLocalCaches.reset();
         // pthread_key_dtors must be disabled before memory unmapping
         // TODO: race-free solution
         tlsPointerKey.~TLSKey();
@@ -869,6 +899,10 @@ public:
         MallocMutex::scoped_lock lock(setModeLock);
         requestedMode.set(newVal);
         enabled = pageSize && newVal;
+    }
+    void reset() {
+        pageSize = 0;
+        needActualStatusPrint = enabled = wasObserved = 0;
     }
 };
 

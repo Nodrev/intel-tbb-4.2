@@ -1,4 +1,4 @@
-# Copyright 2005-2013 Intel Corporation.  All Rights Reserved.
+# Copyright 2005-2014 Intel Corporation.  All Rights Reserved.
 #
 # This file is part of Threading Building Blocks.
 #
@@ -52,12 +52,10 @@ all:	release test
 
 resources:
 ifeq ($(UI),mac)
-	mkdir -p $(NAME).app/Contents/{MacOS,Resources/en.lproj}
-	cat ../../common/gui/xcode/tbbExample/Info.plist | sed -e "s/tbbExample/$(NAME)/" > $(NAME).app/Contents/Info.plist
-	cat ../../common/gui/xcode/tbbExample/launcher.sh | sed -e "s/tbbExample/$(NAME)/" > $(NAME).app/Contents/MacOS/launcher.sh
-	chmod +x $(NAME).app/Contents/MacOS/launcher.sh
+	mkdir -p $(APPRES)/en.lproj $(NAME).app/Contents/MacOS
+	cp ../../common/gui/xcode/tbbExample/Info.plist $(NAME).app/Contents
 	cp ../../common/gui/xcode/tbbExample/PkgInfo $(NAME).app/Contents
-	cp ../../common/gui/xcode/tbbExample/en.lproj/* $(NAME).app/Contents/Resources/en.lproj
+	cp ../../common/gui/xcode/tbbExample/en.lproj/* $(APPRES)/en.lproj
 endif # OS X*
 
 release: $(SRCFILES) resources
@@ -70,22 +68,12 @@ ifeq ($(UI),mac)
 endif # OS X*
 	$(CXX) -O3 -DNDEBUG $(CXXFLAGS) -o $(EXE) $(SRCFILES) $(MACUIOBJS) -ltbb -ltbbmalloc $(LIBS)
 endif
-ifeq ($(UI),mac)
-	cp ../../../build/*_release/lib{tbb,tbbmalloc}.dylib $(NAME).app/Contents/Resources
-	install_name_tool -change libtbb.dylib @executable_path/../Resources/libtbb.dylib $(EXE)
-	install_name_tool -change libtbbmalloc.dylib @executable_path/../Resources/libtbbmalloc.dylib $(EXE)
-endif
 
 debug:  $(SRCFILES) resources
 ifeq ($(UI),mac)
 	$(CXX_UI) -g -O0 -DTBB_USE_DEBUG -D_DEBUG $(CXXFLAGS) -c $(MACUISOURCES)
 endif # OS X*
 	$(CXX) -g -O0 -DTBB_USE_DEBUG -D_DEBUG $(CXXFLAGS) -o $(EXE) $(SRCFILES) $(MACUIOBJS) -ltbb_debug -ltbbmalloc_debug $(LIBS)
-ifeq ($(UI),mac)
-	cp ../../../build/*_debug/lib{tbb,tbbmalloc}_debug.dylib $(NAME).app/Contents/Resources
-	install_name_tool -change libtbb_debug.dylib @executable_path/../Resources/libtbb_debug.dylib $(EXE)
-	install_name_tool -change libtbbmalloc_debug.dylib @executable_path/../Resources/libtbbmalloc_debug.dylib $(EXE)
-endif
 
 clean:
 	$(RM) $(EXE) *.o *.d
@@ -95,14 +83,14 @@ endif
 
 test:
 ifeq ($(UI),mac)
-	export DYLD_LIBRARY_PATH="$(DYLD_LIBRARY_PATH):$(TBBLIBSPATH)"; ./$(EXE) $(ARGS)
+	export DYLD_LIBRARY_PATH="$(DYLD_LIBRARY_PATH):$(TBBLIBSPATH)"; $(run_cmd) ./$(EXE) $(ARGS)
 else
-	./$(EXE) $(ARGS)
+	$(run_cmd) ./$(EXE) $(ARGS)
 endif
 
 light_test:
 ifeq ($(UI),mac)
-	export DYLD_LIBRARY_PATH="$(DYLD_LIBRARY_PATH):$(TBBLIBSPATH)"; ./$(EXE) $(LIGHT_ARGS)
+	export DYLD_LIBRARY_PATH="$(DYLD_LIBRARY_PATH):$(TBBLIBSPATH)"; $(run_cmd) ./$(EXE) $(LIGHT_ARGS)
 else
-	./$(EXE) $(LIGHT_ARGS)
+	$(run_cmd) ./$(EXE) $(LIGHT_ARGS)
 endif

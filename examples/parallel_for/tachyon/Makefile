@@ -1,4 +1,4 @@
-# Copyright 2005-2013 Intel Corporation.  All Rights Reserved.
+# Copyright 2005-2014 Intel Corporation.  All Rights Reserved.
 #
 # This file is part of Threading Building Blocks.
 #
@@ -99,21 +99,21 @@ tbb1d_debug: build_tbb1d_debug run_tbb1d
 build_serial:
 	$(MAKE) VERSION=serial build_one
 build_serial_debug:
-	$(MAKE) VERSION=serial ADD_DEBUG=1 AFFIX_DEBUG=_debug build_one
+	$(MAKE) VERSION=serial ADD_DEBUG=1 build_one
 run_serial:
 	$(MAKE) VERSION=serial run_one
 
 build_tbb:
 	$(MAKE) VERSION=tbb ADD_TBB=1 build_one
 build_tbb_debug:
-	$(MAKE) VERSION=tbb ADD_TBB=1 ADD_DEBUG=1 AFFIX_DEBUG=_debug build_one
+	$(MAKE) VERSION=tbb ADD_TBB=1 ADD_DEBUG=1 build_one
 run_tbb:
 	$(MAKE) VERSION=tbb run_one
 
 build_tbb1d:
 	$(MAKE) VERSION=tbb1d ADD_TBB=1 build_one
 build_tbb1d_debug:
-	$(MAKE) VERSION=tbb1d ADD_TBB=1 ADD_DEBUG=1 AFFIX_DEBUG=_debug build_one
+	$(MAKE) VERSION=tbb1d ADD_TBB=1 ADD_DEBUG=1 build_one
 run_tbb1d:
 	$(MAKE) VERSION=tbb1d run_one
 
@@ -160,34 +160,27 @@ build_one:	$(EXE)
 
 run_one:
 ifeq ($(UI),mac)
-	export DYLD_LIBRARY_PATH="$(DYLD_LIBRARY_PATH):$(TBBLIBSPATH)"; ./$(EXE) $(ARGS)
+	export DYLD_LIBRARY_PATH="$(DYLD_LIBRARY_PATH):$(TBBLIBSPATH)"; $(run_cmd) ./$(EXE) $(ARGS)
 else
-	./$(EXE) $(ARGS)
+	$(run_cmd) ./$(EXE) $(ARGS)
 endif
 
 run_perf_one:
-	./$(EXE) $(PERF_RUN_ARGS)
+	$(run_cmd) ./$(EXE) $(PERF_RUN_ARGS)
 
 light_test_one:
-	./$(EXE) $(LIGHT_ARGS)
+	$(run_cmd) ./$(EXE) $(LIGHT_ARGS)
 
 $(EXE): $(SOURCE)
 ifeq ($(UI),mac)
-	mkdir -p $(NAME)$(SUFFIX).app/Contents/{MacOS/dat,Resources/en.lproj}
-	cat ../../common/gui/xcode/tbbExample/Info.plist | sed -e "s/tbbExample/$(NAME)$(SUFFIX)/" > $(NAME)$(SUFFIX).app/Contents/Info.plist
-	cat ../../common/gui/xcode/tbbExample/launcher.sh | sed -e "s|tbbExample|$(NAME)$(SUFFIX) $(ARGS)|" > $(NAME)$(SUFFIX).app/Contents/MacOS/launcher.sh
-	chmod +x $(NAME)$(SUFFIX).app/Contents/MacOS/launcher.sh
+	mkdir -p $(APPRES)/en.lproj $(NAME)$(SUFFIX).app/Contents/MacOS
+	cp ../../common/gui/xcode/tbbExample/Info.plist $(NAME)$(SUFFIX).app/Contents
 	cp ../../common/gui/xcode/tbbExample/PkgInfo $(NAME)$(SUFFIX).app/Contents
-	cp ../../common/gui/xcode/tbbExample/en.lproj/* $(NAME)$(SUFFIX).app/Contents/Resources/en.lproj
-	cp -r ./dat $(NAME)$(SUFFIX).app/Contents/MacOS/
+	cp ../../common/gui/xcode/tbbExample/en.lproj/* $(APPRES)/en.lproj
 	$(CXX_UI) $(MYCXXFLAGS) $(CXXFLAGS) -c $(MACUISOURCES)
 endif # OS X*
 	$(CXX) $(MYCXXFLAGS) -o $@ $(SOURCE) $(MACUIOBJS) $(LIBS)
 	$(RM) *.o
-ifeq ($(UI),mac)
-	install_name_tool -change libtbb$(AFFIX_DEBUG).dylib @executable_path/../Resources/libtbb$(AFFIX_DEBUG).dylib $(EXE)
-	cp ../../../build/*_release/libtbb$(AFFIX_DEBUG).dylib $(NAME)$(SUFFIX).app/Contents/Resources
-endif # Mac
 
 clean: VERSION = *
 clean:

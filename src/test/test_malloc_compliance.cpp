@@ -1,5 +1,5 @@
 /*
-    Copyright 2005-2013 Intel Corporation.  All Rights Reserved.
+    Copyright 2005-2014 Intel Corporation.  All Rights Reserved.
 
     This file is part of Threading Building Blocks.
 
@@ -112,6 +112,7 @@ void limitMem( size_t limit )
 #include "tbb/scalable_allocator.h"
 
 #define HARNESS_CUSTOM_MAIN 1
+#define HARNESS_TBBMALLOC_THREAD_SHUTDOWN 1
 #include "harness.h"
 #include "harness_barrier.h"
 #if !__TBB_SOURCE_DIRECTLY_INCLUDED
@@ -325,7 +326,7 @@ int main(int argc, char* argv[]) {
         if (strcmp((char*)*(argv+i),"-s")==0)
         {
 #if __INTEL_COMPILER == 1400 && __linux__
-            // Workaround for Intel(R) Compiler XE, version 14.0.0.080:
+            // Workaround for Intel(R) C++ Compiler XE, version 14.0.0.080:
             // unable to call setSystemAllocs() in such configuration.
             REPORT("Known issue: Standard allocator testing is not supported.\n");
             REPORT( "skip\n" );
